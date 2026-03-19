@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>PickleLog — Pickleball Scorekeeper</title>
+  <meta name="description" content="A lightweight, elegant, mobile-first pickleball scorekeeper and match logger that runs fully offline in your browser.">
+  <meta name="theme-color" content="#0d0d12">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Client-side pickleball logger</p>
+        <h1>PickleLog</h1>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      </div>
+    </header>
+
+    <nav class="main-nav" aria-label="Primary">
+      <button class="nav-btn active" type="button" data-screen="setup-screen">New Match</button>
+      <button class="nav-btn" type="button" data-screen="history-screen">Matches</button>
+    </nav>
+
+    <main>
+      <section class="screen active" id="setup-screen" aria-labelledby="setup-title">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Fast setup</p>
+              <h2 id="setup-title">Start a match</h2>
+            </div>
+          </div>
+
+          <form id="setup-form" novalidate>
+            <div class="field-block">
+              <span class="field-label">Format</span>
+              <div class="segmented">
+                <input type="radio" name="matchType" id="type-singles" value="S" checked>
+                <label for="type-singles">Singles</label>
+
+                <input type="radio" name="matchType" id="type-doubles" value="D">
+                <label for="type-doubles">Doubles</label>
+              </div>
+            </div>
+
+            <div class="field-block">
+              <span class="field-label">Default logging mode</span>
+              <div class="segmented">
+                <input type="radio" name="loggingMode" id="mode-simple" value="s" checked>
+                <label for="mode-simple">Simple</label>
+
+                <input type="radio" name="loggingMode" id="mode-advanced" value="a">
+                <label for="mode-advanced">Advanced</label>
+              </div>
+            </div>
+
+            <div class="field-grid two">
+              <label class="field">
+                <span>Play to</span>
+                <select name="target">
+                  <option value="11" selected>11</option>
+                  <option value="15">15</option>
+                  <option value="21">21</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>First serve</span>
+                <select name="firstServe">
+                  <option value="0" selected>Team A</option>
+                  <option value="1">Team B</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="player-fields" class="player-fields"></div>
+
+            <label class="field">
+              <span>Notes <em>(optional)</em></span>
+              <textarea name="notes" rows="3" maxlength="280" placeholder="Session notes, venue, partners, or reminders"></textarea>
+            </label>
+
+            <div class="actions">
+              <button class="primary-btn" type="submit">Start match</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card hidden" id="resume-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Recovered</p>
+              <h2>Resume in-progress match</h2>
+            </div>
+          </div>
+          <p id="resume-text" class="muted"></p>
+          <div class="actions split">
+            <button class="ghost-btn" id="discard-resume" type="button">Discard</button>
+            <button class="primary-btn" id="resume-match" type="button">Resume</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="live-screen" aria-labelledby="live-title">
+        <div class="live-stack">
+          <div class="score-card">
+            <div class="score-card-top">
+              <div>
+                <p class="eyebrow">Live match</p>
+                <h2 id="live-title">Scoreboard</h2>
+              </div>
+
+              <div class="pill-row">
+                <span class="pill" id="live-format-pill">Singles</span>
+                <button class="pill pill-btn" type="button" id="live-mode-toggle">Simple mode</button>
+              </div>
+            </div>
+
+            <div class="match-meta-row">
+              <div class="meta-chip" id="serve-indicator">Serving: Team A</div>
+              <div class="meta-chip" id="score-call">0 - 0</div>
+            </div>
+
+            <div class="scoreboard">
+              <article class="team-panel" id="team-panel-0">
+                <div class="team-names" id="team-name-0">Team A</div>
+                <div class="team-score" id="team-score-0">0</div>
+                <button class="score-btn" type="button" data-team="0">Point for Team A</button>
+              </article>
+
+              <article class="team-panel" id="team-panel-1">
+                <div class="team-names" id="team-name-1">Team B</div>
+                <div class="team-score" id="team-score-1">0</div>
+                <button class="score-btn" type="button" data-team="1">Point for Team B</button>
+              </article>
+            </div>
+
+            <div class="finish-banner hidden" id="finish-banner">
+              Winning score reached. Review and save the result.
+            </div>
+
+            <div class="utility-row">
+              <button class="ghost-btn small" id="undo-btn" type="button">Undo</button>
+              <button class="ghost-btn small" id="correct-score-btn" type="button">Correct score</button>
+              <button class="ghost-btn small" id="end-match-btn" type="button">End match</button>
+            </div>
+          </div>
+
+          <div class="card" id="advanced-card">
+            <div class="card-head compact">
+              <div>
+                <p class="eyebrow">Detailed logging</p>
+                <h2>Advanced rally</h2>
+              </div>
+            </div>
+
+            <form id="advanced-form">
+              <div class="field-block">
+                <span class="field-label">Point winner</span>
+                <div class="segmented">
+                  <input type="radio" name="advWinner" id="adv-win-0" value="0" checked>
+                  <label for="adv-win-0">Team A</label>
+
+                  <input type="radio" name="advWinner" id="adv-win-1" value="1">
+                  <label for="adv-win-1">Team B</label>
+                </div>
+              </div>
+
+              <div class="field-grid two">
+                <label class="field">
+                  <span>Losing player</span>
+                  <select id="adv-loser">
+                    <option value="-1">Not specified</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>Winning player</span>
+                  <select id="adv-actor">
+                    <option value="-1">Not specified</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="field-grid two">
+                <label class="field">
+                  <span>Event type</span>
+                  <select id="adv-event">
+                    <option value="0">General point</option>
+                    <option value="1">Unforced error</option>
+                    <option value="2">Forced error</option>
+                    <option value="3">Winner</option>
+                    <option value="4">Serve error</option>
+                    <option value="5">Return error</option>
+                    <option value="6">Volley error</option>
+                    <option value="7">Dink error</option>
+                    <option value="8">Out ball</option>
+                    <option value="9">Net ball</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>Zone</span>
+                  <select id="adv-zone">
+                    <option value="0">None</option>
+                    <option value="1">Left</option>
+                    <option value="2">Middle</option>
+                    <option value="3">Right</option>
+                    <option value="4">Kitchen</option>
+                    <option value="5">Midcourt</option>
+                    <option value="6">Baseline</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="actions">
+                <button class="primary-btn" type="submit">Log rally</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="card-head compact">
+              <div>
+                <p class="eyebrow">Point history</p>
+                <h2>Recent rallies</h2>
+              </div>
+            </div>
+
+            <div id="history-chips" class="history-chips" aria-label="Recent point history"></div>
+            <div id="recent-events" class="event-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="history-screen" aria-labelledby="history-title">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Stored locally</p>
+              <h2 id="history-title">Previous matches</h2>
+            </div>
+          </div>
+
+          <div class="history-tools">
+            <label class="field search-field">
+              <span>Search</span>
+              <input id="history-search" type="search" placeholder="Search players, type, score, date">
+            </label>
+
+            <div class="actions split">
+              <button class="ghost-btn" id="import-btn" type="button">Import file</button>
+              <input type="file" id="import-file" accept=".json,.txt,application/json,text/plain" hidden>
+            </div>
+          </div>
+
+          <div id="match-list" class="match-list"></div>
+        </div>
+      </section>
+
+      <section class="screen" id="summary-screen" aria-labelledby="summary-title">
+        <div class="card summary-hero">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Saved result</p>
+              <h2 id="summary-title">Match summary</h2>
+            </div>
+          </div>
+
+          <div id="summary-head"></div>
+
+          <div class="actions wrap">
+            <button class="primary-btn" id="export-image-btn" type="button">Export image</button>
+            <button class="ghost-btn" id="copy-summary-btn" type="button">Copy summary</button>
+            <button class="ghost-btn" id="save-text-btn" type="button">Save text</button>
+            <button class="ghost-btn" id="save-json-btn" type="button">Save JSON</button>
+            <button class="ghost-btn" id="copy-json-btn" type="button">Copy JSON</button>
+          </div>
+        </div>
+
+        <div class="summary-grid">
+          <div class="card">
+            <div class="card-head compact">
+              <div>
+                <p class="eyebrow">Overview</p>
+                <h2>Details</h2>
+              </div>
+            </div>
+            <div id="summary-meta" class="stat-grid"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head compact">
+              <div>
+                <p class="eyebrow">Team stats</p>
+                <h2>Breakdown</h2>
+              </div>
+            </div>
+            <div id="summary-stats"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head compact">
+            <div>
+              <p class="eyebrow">Advanced logs</p>
+              <h2>Rally record</h2>
+            </div>
+          </div>
+          <div id="summary-logs" class="event-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal hidden" id="modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <h2 id="modal-title">Edit</h2>
+        <button class="icon-btn" id="modal-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <div id="modal-body"></div>
+      <div class="actions split" id="modal-actions"></div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
