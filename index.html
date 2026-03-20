@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>PickleLog — Pickleball Scorekeeper</title>
-  <meta name="description" content="A lightweight, elegant, mobile-first pickleball scorekeeper and match logger that runs fully offline in your browser.">
+  <meta name="description" content="Lightweight, elegant, mobile-first pickleball scorekeeping and match logging for GitHub Pages.">
   <meta name="theme-color" content="#0d0d12">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -15,10 +15,7 @@
         <p class="eyebrow">Client-side pickleball logger</p>
         <h1>PickleLog</h1>
       </div>
-
-      <div class="topbar-actions">
-        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
-      </div>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
     </header>
 
     <nav class="main-nav" aria-label="Primary">
@@ -49,7 +46,7 @@
             </div>
 
             <div class="field-block">
-              <span class="field-label">Default logging mode</span>
+              <span class="field-label">Logging mode</span>
               <div class="segmented">
                 <input type="radio" name="loggingMode" id="mode-simple" value="s" checked>
                 <label for="mode-simple">Simple</label>
@@ -70,10 +67,9 @@
               </label>
 
               <label class="field">
-                <span>First serve</span>
-                <select name="firstServe">
-                  <option value="0" selected>Team A</option>
-                  <option value="1">Team B</option>
+                <span>Win by</span>
+                <select name="winBy">
+                  <option value="2" selected>2</option>
                 </select>
               </label>
             </div>
@@ -82,7 +78,7 @@
 
             <label class="field">
               <span>Notes <em>(optional)</em></span>
-              <textarea name="notes" rows="3" maxlength="280" placeholder="Session notes, venue, partners, or reminders"></textarea>
+              <textarea name="notes" rows="3" maxlength="280" placeholder="Venue, partners, session notes"></textarea>
             </label>
 
             <div class="actions">
@@ -114,16 +110,15 @@
                 <p class="eyebrow">Live match</p>
                 <h2 id="live-title">Scoreboard</h2>
               </div>
-
               <div class="pill-row">
                 <span class="pill" id="live-format-pill">Singles</span>
-                <button class="pill pill-btn" type="button" id="live-mode-toggle">Simple mode</button>
+                <button class="pill pill-btn" id="live-mode-toggle" type="button">Simple mode</button>
               </div>
             </div>
 
             <div class="match-meta-row">
               <div class="meta-chip" id="serve-indicator">Serving: Team A</div>
-              <div class="meta-chip" id="score-call">0 - 0</div>
+              <div class="meta-chip" id="score-call">0-0</div>
             </div>
 
             <div class="scoreboard">
@@ -140,18 +135,14 @@
               </article>
             </div>
 
-            <div class="finish-banner hidden" id="finish-banner">
-              Winning score reached. Review and save the result.
-            </div>
-
             <div class="utility-row">
               <button class="ghost-btn small" id="undo-btn" type="button">Undo</button>
-              <button class="ghost-btn small" id="correct-score-btn" type="button">Correct score</button>
-              <button class="ghost-btn small" id="end-match-btn" type="button">End match</button>
+              <button class="ghost-btn small" id="correct-score-btn" type="button">Correct</button>
+              <button class="ghost-btn small" id="end-match-btn" type="button">End</button>
             </div>
           </div>
 
-          <div class="card" id="advanced-card">
+          <div class="card hidden" id="advanced-card">
             <div class="card-head compact">
               <div>
                 <p class="eyebrow">Detailed logging</p>
@@ -232,7 +223,7 @@
               </div>
             </div>
 
-            <div id="history-chips" class="history-chips" aria-label="Recent point history"></div>
+            <div id="history-chips" class="history-chips"></div>
             <div id="recent-events" class="event-list"></div>
           </div>
         </div>
@@ -275,7 +266,8 @@
           <div id="summary-head"></div>
 
           <div class="actions wrap">
-            <button class="primary-btn" id="export-image-btn" type="button">Export image</button>
+            <button class="primary-btn" id="rematch-btn" type="button">Rematch</button>
+            <button class="ghost-btn" id="export-image-btn" type="button">Export image</button>
             <button class="ghost-btn" id="copy-summary-btn" type="button">Copy summary</button>
             <button class="ghost-btn" id="save-text-btn" type="button">Save text</button>
             <button class="ghost-btn" id="save-json-btn" type="button">Save JSON</button>

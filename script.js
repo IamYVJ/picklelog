@@ -96,6 +96,7 @@ function bindSetup() {
     const match = createMatchFromForm(e.currentTarget);
     if (!match) return;
     state.activeMatch = match;
+    state.viewingMatch = null;
     saveActiveMatch();
     renderLive();
     showScreen('live-screen');
@@ -105,6 +106,7 @@ function bindSetup() {
     const match = loadActiveMatch();
     if (!match) return;
     state.activeMatch = match;
+    state.viewingMatch = null;
     renderLive();
     showScreen('live-screen');
   });
@@ -160,10 +162,10 @@ function bindLive() {
 
   $('#end-match-btn')?.addEventListener('click', () => {
     if (!state.activeMatch) return;
-    const msg = state.activeMatch.fn
+    const message = state.activeMatch.fn
       ? 'End this match and save it?'
       : 'This match has not reached the target yet. End and save anyway?';
-    if (!confirm(msg)) return;
+    if (!confirm(message)) return;
     finalizeActiveMatch();
   });
 }
@@ -196,7 +198,7 @@ function bindHistory() {
       alert(`Imported ${normalized.length} match${normalized.length > 1 ? 'es' : ''}.`);
     } catch (err) {
       console.error(err);
-      alert('Import failed. Use a PickleLog JSON export or text export from this app.');
+      alert('Import failed. Use a PickleLog JSON export or a text export from this app.');
     } finally {
       e.target.value = '';
     }
@@ -244,6 +246,21 @@ function bindSummary() {
       alert('Image export failed on this browser.');
     }
   });
+
+  $('#rematch-btn')?.addEventListener('click', () => {
+    const match = getCurrentSummaryMatch();
+    if (!match) return;
+    const rematch = createRematchFrom(match);
+    if (!rematch) {
+      alert('Could not create rematch.');
+      return;
+    }
+    state.activeMatch = rematch;
+    state.viewingMatch = null;
+    saveActiveMatch();
+    renderLive();
+    showScreen('live-screen');
+  });
 }
 
 function bindModal() {
@@ -267,16 +284,22 @@ function renderPlayerFields() {
         <h3>Team A</h3>
         <label class="field">
           <span>Player name</span>
-          <input name="p0" maxlength="28" placeholder="Player A" value="${escapeAttr(prev.p0 || '')}">
+          <input name="p0" maxlength="28" placeholder="A1" value="${escapeAttr(prev.p0 || '')}">
         </label>
       </div>
+
       <div class="team-group">
         <h3>Team B</h3>
         <label class="field">
           <span>Player name</span>
-          <input name="p1" maxlength="28" placeholder="Player B" value="${escapeAttr(prev.p1 || '')}">
+          <input name="p1" maxlength="28" placeholder="B1" value="${escapeAttr(prev.p1 || '')}">
         </label>
       </div>
+
+      <label class="field">
+        <span>Starting server</span>
+        <select name="startPlayer" id="start-player"></select>
+      </label>
     `;
   } else {
     holder.innerHTML = `
@@ -284,26 +307,38 @@ function renderPlayerFields() {
         <h3>Team A</h3>
         <label class="field">
           <span>Player 1</span>
-          <input name="p0" maxlength="28" placeholder="Player A1" value="${escapeAttr(prev.p0 || '')}">
+          <input name="p0" maxlength="28" placeholder="A1" value="${escapeAttr(prev.p0 || '')}">
         </label>
         <label class="field">
           <span>Player 2</span>
-          <input name="p1" maxlength="28" placeholder="Player A2" value="${escapeAttr(prev.p1 || '')}">
+          <input name="p1" maxlength="28" placeholder="A2" value="${escapeAttr(prev.p1 || '')}">
         </label>
       </div>
+
       <div class="team-group">
         <h3>Team B</h3>
         <label class="field">
           <span>Player 1</span>
-          <input name="p2" maxlength="28" placeholder="Player B1" value="${escapeAttr(prev.p2 || '')}">
+          <input name="p2" maxlength="28" placeholder="B1" value="${escapeAttr(prev.p2 || '')}">
         </label>
         <label class="field">
           <span>Player 2</span>
-          <input name="p3" maxlength="28" placeholder="Player B2" value="${escapeAttr(prev.p3 || '')}">
+          <input name="p3" maxlength="28" placeholder="B2" value="${escapeAttr(prev.p3 || '')}">
         </label>
       </div>
+
+      <label class="field">
+        <span>Starting server</span>
+        <select name="startPlayer" id="start-player"></select>
+      </label>
     `;
   }
+
+  $$('input[name^="p"]', holder).forEach(input => {
+    input.addEventListener('input', renderStartServerOptions);
+  });
+
+  renderStartServerOptions();
 }
 
 function readSetupNames() {
@@ -315,38 +350,78 @@ function readSetupNames() {
   return out;
 }
 
+function defaultNamesForType(type) {
+  return type === 'D' ? ['A1', 'A2', 'B1', 'B2'] : ['A1', 'B1'];
+}
+
+function nameOrDefault(value, fallback) {
+  const v = String(value || '').trim();
+  return v || fallback;
+}
+
+function renderStartServerOptions() {
+  const select = $('#start-player');
+  if (!select) return;
+
+  const type = $('input[name="matchType"]:checked')?.value || 'S';
+  const defaults = defaultNamesForType(type);
+  const prev = select.value;
+
+  const players = type === 'D'
+    ? [
+        nameOrDefault($('[name="p0"]')?.value, defaults[0]),
+        nameOrDefault($('[name="p1"]')?.value, defaults[1]),
+        nameOrDefault($('[name="p2"]')?.value, defaults[2]),
+        nameOrDefault($('[name="p3"]')?.value, defaults[3])
+      ]
+    : [
+        nameOrDefault($('[name="p0"]')?.value, defaults[0]),
+        nameOrDefault($('[name="p1"]')?.value, defaults[1])
+      ];
+
+  select.innerHTML = players.map((name, idx) => `<option value="${idx}">${escapeHtml(name)}</option>`).join('');
+
+  if ([...select.options].some(o => o.value === prev)) {
+    select.value = prev;
+  } else {
+    select.value = '0';
+  }
+}
+
 function createMatchFromForm(form) {
   const fd = new FormData(form);
   const ty = String(fd.get('matchType') || 'S');
   const md = String(fd.get('loggingMode') || 's');
   const target = Math.max(1, Number(fd.get('target') || 11));
-  const fs = Number(fd.get('firstServe') || 0);
+  const wb = Math.max(1, Number(fd.get('winBy') || 2));
   const nt = String(fd.get('notes') || '').trim();
+  const defaults = defaultNamesForType(ty);
 
   let pl = [];
   let tm = [];
+  let sp = 0;
 
   if (ty === 'S') {
-    const a = String(fd.get('p0') || '').trim();
-    const b = String(fd.get('p1') || '').trim();
-    if (!a || !b) {
-      alert('Enter both player names.');
-      return null;
-    }
-    pl = [a, b];
+    pl = [
+      nameOrDefault(fd.get('p0'), defaults[0]),
+      nameOrDefault(fd.get('p1'), defaults[1])
+    ];
     tm = [[0], [1]];
+    sp = Number(fd.get('startPlayer') || 0);
+    if (![0, 1].includes(sp)) sp = 0;
   } else {
-    const a1 = String(fd.get('p0') || '').trim();
-    const a2 = String(fd.get('p1') || '').trim();
-    const b1 = String(fd.get('p2') || '').trim();
-    const b2 = String(fd.get('p3') || '').trim();
-    if (!a1 || !a2 || !b1 || !b2) {
-      alert('Enter all four player names.');
-      return null;
-    }
-    pl = [a1, a2, b1, b2];
+    pl = [
+      nameOrDefault(fd.get('p0'), defaults[0]),
+      nameOrDefault(fd.get('p1'), defaults[1]),
+      nameOrDefault(fd.get('p2'), defaults[2]),
+      nameOrDefault(fd.get('p3'), defaults[3])
+    ];
     tm = [[0, 1], [2, 3]];
+    sp = Number(fd.get('startPlayer') || 0);
+    if (![0, 1, 2, 3].includes(sp)) sp = 0;
   }
+
+  const fs = tm[0].includes(sp) ? 0 : 1;
 
   const match = {
     v: APP_VERSION,
@@ -356,8 +431,9 @@ function createMatchFromForm(form) {
     ty,
     md,
     target,
-    wb: 2,
+    wb,
     fs,
+    sp,
     nt,
     pl,
     tm,
@@ -374,21 +450,26 @@ function createMatchFromForm(form) {
   return match;
 }
 
-function logRally(winner, detail) {
-  const match = state.activeMatch;
-  if (!match) return;
-  const d = detail || {};
-  match.pts.push([
-    Number(winner || 0),
-    Number(d.d || 0),
-    Number(d.e || 0),
-    Number(d.z || 0),
-    Number(d.a ?? -1),
-    Number(d.l ?? -1)
-  ]);
-  recomputeMatch(match);
-  saveActiveMatch();
-  renderLive();
+function getTeamNames(match) {
+  const a = (match.tm?.[0] || []).map(i => match.pl[i]).filter(Boolean).join(' / ') || 'Team A';
+  const b = (match.tm?.[1] || []).map(i => match.pl[i]).filter(Boolean).join(' / ') || 'Team B';
+  return [a, b];
+}
+
+function getShortTeamNames(match) {
+  return getTeamNames(match).map(name => match.ty === 'D' ? name.replace(/\s*\/\s*/g, '/') : name);
+}
+
+function getScoreCall(match) {
+  const servingScore = match.sc[match.srv];
+  const receivingScore = match.sc[1 - match.srv];
+  return match.ty === 'D'
+    ? `${servingScore}-${receivingScore}-${match.sn}`
+    : `${servingScore}-${receivingScore}`;
+}
+
+function buildMatchLabel(match) {
+  return `${formatCompactDateTime(match.ts)} - ${match.ty === 'D' ? 'Doubles' : 'Singles'} - ${getShortTeamNames(match).join(' vs ')} - ${match.sc[0]}-${match.sc[1]}`;
 }
 
 function recomputeMatch(match) {
@@ -450,26 +531,13 @@ function recomputeMatch(match) {
   return match;
 }
 
-function getTeamNames(match) {
-  const a = (match.tm?.[0] || []).map(i => match.pl[i]).filter(Boolean).join(' / ') || 'Team A';
-  const b = (match.tm?.[1] || []).map(i => match.pl[i]).filter(Boolean).join(' / ') || 'Team B';
-  return [a, b];
-}
-
-function getShortTeamNames(match) {
-  return getTeamNames(match).map(name => match.ty === 'D' ? name.replace(/\s*\/\s*/g, '/') : name);
-}
-
-function buildMatchLabel(match) {
-  return `${formatCompactDateTime(match.ts)} - ${match.ty === 'D' ? 'Doubles' : 'Singles'} - ${getShortTeamNames(match).join(' vs ')} - ${match.sc[0]}-${match.sc[1]}`;
-}
-
 function renderLive() {
   const match = state.activeMatch;
   if (!match) return;
 
   recomputeMatch(match);
   const [teamA, teamB] = match.tl;
+  const starterName = typeof match.sp === 'number' && match.pl[match.sp] ? match.pl[match.sp] : match.tl[match.fs];
 
   $('#live-format-pill').textContent = match.ty === 'D' ? 'Doubles' : 'Singles';
   $('#live-mode-toggle').textContent = match.md === 'a' ? 'Advanced mode' : 'Simple mode';
@@ -479,14 +547,15 @@ function renderLive() {
   $('#team-score-1').textContent = String(match.sc[1]);
   $('#team-panel-0').classList.toggle('serving', match.srv === 0);
   $('#team-panel-1').classList.toggle('serving', match.srv === 1);
+
   $('#serve-indicator').textContent = match.ty === 'D'
-    ? `Serving: ${match.tl[match.srv]} · Server ${match.sn}`
-    : `Serving: ${match.tl[match.srv]}`;
-  $('#score-call').textContent = `${match.sc[0]} - ${match.sc[1]}`;
+    ? `Serving: ${match.tl[match.srv]} · Server ${match.sn}${match.pts.length === 0 ? ` · Start ${starterName}` : ''}`
+    : `Serving: ${match.tl[match.srv]}${match.pts.length === 0 ? ` · Start ${starterName}` : ''}`;
+
+  $('#score-call').textContent = getScoreCall(match);
   $('.score-btn[data-team="0"]').textContent = `Point for ${teamA}`;
   $('.score-btn[data-team="1"]').textContent = `Point for ${teamB}`;
   $('#advanced-card').classList.toggle('hidden', match.md !== 'a');
-  $('#finish-banner').classList.toggle('hidden', !match.fn);
 
   populateAdvancedSelectors(match);
   renderHistoryChips(match);
@@ -527,9 +596,35 @@ function getAdvancedPayload() {
   };
 }
 
+function logRally(winner, detail) {
+  const match = state.activeMatch;
+  if (!match) return;
+
+  const d = detail || {};
+  match.pts.push([
+    Number(winner || 0),
+    Number(d.d || 0),
+    Number(d.e || 0),
+    Number(d.z || 0),
+    Number(d.a ?? -1),
+    Number(d.l ?? -1)
+  ]);
+
+  recomputeMatch(match);
+  saveActiveMatch();
+
+  if (match.fn) {
+    finalizeActiveMatch();
+    return;
+  }
+
+  renderLive();
+}
+
 function renderHistoryChips(match) {
   const holder = $('#history-chips');
   const list = (match._timeline || []).filter(x => x.k === 'p').slice(-24);
+
   if (!list.length) {
     holder.innerHTML = '<div class="empty-state">No rallies logged yet.</div>';
     return;
@@ -688,7 +783,6 @@ function openEventEditor(index) {
 
 function openCorrectionModal(match, index = null) {
   recomputeMatch(match);
-
   const existing = typeof index === 'number' && isCorrection(match.pts[index]) ? match.pts[index].c : null;
   const current = existing || [match.sc[0], match.sc[1], match.srv, match.ty === 'D' ? match.sn : 1];
 
@@ -749,17 +843,21 @@ function openCorrectionModal(match, index = null) {
 function finalizeActiveMatch() {
   const match = state.activeMatch;
   if (!match) return;
+
   recomputeMatch(match);
   match.et = match.et || Date.now();
   match.st = 'f';
   match.lb = buildMatchLabel(match);
+
   saveStoredMatch(match);
   clearActiveMatch();
   state.activeMatch = null;
   state.viewingMatch = clone(match);
+
   renderHistory();
   renderSummary(state.viewingMatch);
   showScreen('summary-screen');
+  checkResume();
 }
 
 function renderHistory() {
@@ -833,7 +931,7 @@ function renderSummary(match) {
     statCard('Duration', formatDuration((match.et || Date.now()) - match.ts)),
     statCard('Total rallies', String(stats.totalRallies)),
     statCard('Logging mode', match.md === 'a' ? 'Advanced' : 'Simple'),
-    statCard('Serving finish', match.ty === 'D' ? `${match.tl[match.srv]} · Server ${match.sn}` : match.tl[match.srv]),
+    statCard('Starting server', match.pl?.[match.sp] || '—'),
     statCard('Notes', match.nt || '—')
   ].join('');
 
@@ -942,8 +1040,10 @@ function buildSummaryText(match, withData) {
     `Label: ${match.lb}`,
     `Winner: ${winner}`,
     `Final score: ${match.sc[0]}-${match.sc[1]}`,
+    `Current score call: ${getScoreCall(match)}`,
     `Format: ${match.ty === 'D' ? 'Doubles' : 'Singles'}`,
     `Players: ${match.pl.join(', ')}`,
+    `Starting server: ${match.pl?.[match.sp] || '-'}`,
     `Date: ${formatPrettyDateTime(match.ts)}`,
     `Duration: ${formatDuration((match.et || Date.now()) - match.ts)}`,
     `Total rallies: ${stats.totalRallies}`,
@@ -984,7 +1084,7 @@ function buildSummaryText(match, withData) {
 }
 
 function minifyForExport(match) {
-  const clean = {
+  return {
     v: APP_VERSION,
     id: match.id,
     ts: match.ts,
@@ -994,13 +1094,13 @@ function minifyForExport(match) {
     target: match.target,
     wb: match.wb,
     fs: match.fs,
+    sp: typeof match.sp === 'number' ? match.sp : 0,
     nt: match.nt || '',
     pl: match.pl,
     tm: match.tm,
     pts: match.pts,
     st: match.st || 'f'
   };
-  return clean;
 }
 
 function parseImportedText(text) {
@@ -1031,6 +1131,7 @@ function normalizeImportedMatch(raw) {
       target: Math.max(1, Number(raw.target || 11)),
       wb: Math.max(1, Number(raw.wb || 2)),
       fs: Number(raw.fs || 0) === 1 ? 1 : 0,
+      sp: Number.isInteger(raw.sp) ? raw.sp : 0,
       nt: String(raw.nt || ''),
       pl: Array.isArray(raw.pl) ? raw.pl.map(x => String(x || '').trim()).filter(Boolean) : [],
       tm: Array.isArray(raw.tm) ? raw.tm : [],
@@ -1046,10 +1147,7 @@ function normalizeImportedMatch(raw) {
     if (match.ty === 'S' && match.pl.length < 2) return null;
     if (match.ty === 'D' && match.pl.length < 4) return null;
     if (!match.tm.length) match.tm = match.ty === 'S' ? [[0], [1]] : [[0, 1], [2, 3]];
-
-    match.pts = match.pts.filter(p =>
-      (Array.isArray(p) && p.length >= 1) || isCorrection(p)
-    );
+    match.pts = match.pts.filter(p => (Array.isArray(p) && p.length >= 1) || isCorrection(p));
 
     recomputeMatch(match);
     return match;
@@ -1058,10 +1156,41 @@ function normalizeImportedMatch(raw) {
   }
 }
 
+function createRematchFrom(match) {
+  const base = normalizeImportedMatch(minifyForExport(match));
+  if (!base) return null;
+
+  const rematch = {
+    v: APP_VERSION,
+    id: uid(),
+    ts: Date.now(),
+    et: null,
+    ty: base.ty,
+    md: base.md,
+    target: base.target,
+    wb: base.wb,
+    fs: base.fs,
+    sp: typeof base.sp === 'number' ? base.sp : 0,
+    nt: '',
+    pl: [...base.pl],
+    tm: clone(base.tm),
+    pts: [],
+    sc: [0, 0],
+    srv: base.fs,
+    sn: base.ty === 'D' ? 2 : 1,
+    st: 'a',
+    fn: false,
+    lb: ''
+  };
+
+  recomputeMatch(rematch);
+  return rematch;
+}
+
 async function exportMatchImage(match) {
   recomputeMatch(match);
-  const winner = match.sc[0] === match.sc[1] ? 'Tie / manual end' : match.tl[match.sc[0] > match.sc[1] ? 0 : 1];
   const stats = computeStats(match);
+  const winner = match.sc[0] === match.sc[1] ? 'Tie / manual end' : match.tl[match.sc[0] > match.sc[1] ? 0 : 1];
 
   const style = getComputedStyle(document.documentElement);
   const bg = style.getPropertyValue('--bg').trim() || '#0d0d12';
@@ -1081,6 +1210,7 @@ async function exportMatchImage(match) {
       <rect x="60" y="60" width="1080" height="1480" rx="42" fill="${svgSafe(surface)}"/>
       <rect x="96" y="96" width="210" height="52" rx="26" fill="${svgSafe(accentSoft)}"/>
       <text x="201" y="129" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="24" font-weight="700" fill="${svgSafe(accent)}">${svgSafe(match.ty === 'D' ? 'Doubles' : 'Singles')}</text>
+
       <text x="96" y="220" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="30" fill="${svgSafe(muted)}">Winner</text>
       <text x="96" y="286" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="54" font-weight="800" fill="${svgSafe(text)}">${svgSafe(truncate(winner, 28))}</text>
       <text x="96" y="390" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="148" font-weight="900" fill="${svgSafe(text)}">${match.sc[0]}-${match.sc[1]}</text>
@@ -1109,6 +1239,7 @@ async function exportMatchImage(match) {
       <text x="96" y="1060" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="28" fill="${svgSafe(text)}">Duration: ${svgSafe(formatDuration((match.et || Date.now()) - match.ts))}</text>
       <text x="96" y="1108" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="28" fill="${svgSafe(text)}">Total rallies: ${stats.totalRallies}</text>
       <text x="96" y="1156" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="28" fill="${svgSafe(text)}">Logging mode: ${svgSafe(match.md === 'a' ? 'Advanced' : 'Simple')}</text>
+      <text x="96" y="1204" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="28" fill="${svgSafe(text)}">Starting server: ${svgSafe(match.pl?.[match.sp] || '-')}</text>
 
       <text x="96" y="1460" font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="26" fill="${svgSafe(muted)}">${svgSafe(APP_NAME)}</text>
     </svg>
@@ -1129,7 +1260,6 @@ async function exportMatchImage(match) {
   canvas.height = 1600;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0);
-
   URL.revokeObjectURL(url);
 
   const pngUrl = canvas.toDataURL('image/png');
@@ -1182,8 +1312,7 @@ function checkResume() {
 }
 
 function saveStoredMatch(match) {
-  const clean = minifyForExport(match);
-  const normalized = normalizeImportedMatch(clean);
+  const normalized = normalizeImportedMatch(minifyForExport(match));
   if (!normalized) return;
 
   try {
@@ -1283,12 +1412,7 @@ function uid() {
 
 function formatCompactDateTime(ts) {
   const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = pad(d.getMonth() + 1);
-  const day = pad(d.getDate());
-  const h = pad(d.getHours());
-  const min = pad(d.getMinutes());
-  return `${y}${m}${day} ${h}${min}`;
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())} ${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
 
 function formatPrettyDateTime(ts) {
@@ -1306,8 +1430,7 @@ function formatDuration(ms) {
   const mins = Math.max(0, Math.round(ms / 60000));
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  if (!h) return `${m} min`;
-  return `${h}h ${m}m`;
+  return h ? `${h}h ${m}m` : `${m} min`;
 }
 
 function pad(n) {
@@ -1372,8 +1495,9 @@ function wrapText(str, max) {
 
   words.forEach(word => {
     const next = line ? `${line} ${word}` : word;
-    if (next.length <= max) line = next;
-    else {
+    if (next.length <= max) {
+      line = next;
+    } else {
       if (line) lines.push(line);
       line = word;
     }
@@ -1389,5 +1513,7 @@ function truncate(str, len) {
 }
 
 function svgSafe(str) {
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;');
 }
